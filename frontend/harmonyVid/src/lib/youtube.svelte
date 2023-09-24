@@ -1,47 +1,48 @@
 <script>
-    import { onMount, createEventDispatcher } from 'svelte';
-    
-    export let player;
-    export let initialVideoId = '';
+	import { onMount, createEventDispatcher } from 'svelte';
 
-    const ytPlayerId = 'youtube-player';
-    const dispatch = createEventDispatcher();
+	export let player;
+	export let initialVideoId = '';
 
-    onMount(() => {
-        function load() {
-            player = new YT.Player(ytPlayerId, {
-                height: '100%',
-                width: '100%',
-                videoId: initialVideoId,
-                playerVars: { autoplay: 1 },
-                events: {
-                    'onStateChange': onPlayerStateChange
-                }
-            });
-        }
+	const ytPlayerId = 'youtube-player';
+	const dispatch = createEventDispatcher();
 
-        function onPlayerStateChange(event) {
-            switch (event.data) {
-                case YT.PlayerState.PLAYING:
-                    dispatch('playing');
-                    break;
-                case YT.PlayerState.PAUSED:
-                    dispatch('paused');
-                    break;
-                // handle other states if needed
-            }
-        }
+	onMount(() => {
+		function load() {
+			player = new YT.Player(ytPlayerId, {
+				height: '100%',
+				width: '100%',
+				videoId: initialVideoId,
+				playerVars: { autoplay: 1 },
+				events: {
+					onStateChange: onPlayerStateChange
+				}
+			});
+		}
+		// TODO each time the player.time changes we should update videoState
 
-        if (window.YT) {
-            load();
-        } else {
-            window.onYouTubeIframeAPIReady = load;
-        }
-    });
+		function onPlayerStateChange(event) {
+			switch (event.data) {
+				case YT.PlayerState.PLAYING:
+					dispatch('playing');
+					break;
+				case YT.PlayerState.PAUSED:
+					dispatch('paused');
+					break;
+				// handle other states if needed like buffered
+			}
+		}
+
+		if (window.YT) {
+			load();
+		} else {
+			window.onYouTubeIframeAPIReady = load;
+		}
+	});
 </script>
 
 <svelte:head>
-    <script src="https://www.youtube.com/iframe_api"></script>
+	<script src="https://www.youtube.com/iframe_api"></script>
 </svelte:head>
 
 <div id={ytPlayerId} />

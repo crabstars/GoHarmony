@@ -1,11 +1,18 @@
 <script>
 	import Youtube from '$lib/youtube.svelte';
 	import { onMount, onDestroy } from 'svelte';
+	import { v4 as uuidv4 } from 'uuid';
 
 	onMount(async () => {
 		// 1. get current state
 		try {
-			const response = await fetch('http://localhost:3000/current-state');
+			console.log(guid);
+			const response = await fetch('http://localhost:3000/current-state', {
+				method: 'GET',
+				headers: {
+					'Content-Type': 'application/json'
+				}
+			});
 			if (!response.ok) {
 				throw new Error('Network response was not ok');
 			}
@@ -15,7 +22,7 @@
 		}
 
 		// 2. sub to event
-		const eventSource = new EventSource('http://localhost:3000/events');
+		const eventSource = new EventSource('http://localhost:3000/events/' + guid);
 
 		eventSource.onmessage = (event) => {
 			const data = JSON.parse(event.data);
@@ -38,7 +45,7 @@
 			console.log('connection open');
 		};
 
-		// 3. check timestamp
+		//3. check timestamp
 		checkInterval = setInterval(() => {
 			if (player && player.getCurrentTime) {
 				if (YT.PlayerState.PLAYING) {
@@ -62,6 +69,7 @@
 		clearInterval(checkInterval); // Clear the interval when the component is destroyed
 	});
 
+	const guid = uuidv4();
 	let videoState = {
 		video_id: '',
 		video_running: false,
@@ -118,9 +126,9 @@
 
 	async function updateVideoState() {
 		// TODO right now if we get a change from the server we also send a patch to the server because the onPlayerStateChange is triggerd if we change isPlaying
-		// => fix soon bec we can get a infinite loop to send request again and again
+		// => fix soon bec we can get a infinite loop to send request again and again or backend dont send state to same user again => better
 		try {
-			const response = await fetch('http://localhost:3000/change-state', {
+			const response = await fetch('http://localhost:3000/change-state/' + guid, {
 				method: 'PATCH',
 				headers: {
 					'Content-Type': 'application/json'

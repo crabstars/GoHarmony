@@ -1,0 +1,7 @@
+1. dont send to same user again (done)
+2. improve change state function
+3. mutex (backend):
+4. why is video paused when clicked on timeline (fe)
+5. other fe todos 
+6. check if clientId is empty and throw error if clientId is already taken
+

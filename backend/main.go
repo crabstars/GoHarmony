@@ -23,26 +23,34 @@ var currentState = State{"FnLvyysSCw4", false, 0, time.Now().Unix()}
 
 func main() {
 	go IncreaseVideoTimestamp()
-	var clientEvents []chan State
+	clients := map[string]chan State{}
+
 	r := chi.NewRouter()
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"https://*", "http://*"},
-		AllowedMethods:   []string{"GET", "PATCH", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
+		AllowedOrigins: []string{"https://*", "http://*"},
+		AllowedMethods: []string{"GET", "PATCH", "OPTIONS"},
+		AllowedHeaders: []string{
+			"Accept",
+			"Authorization",
+			"Content-Type",
+			"X-CSRF-Token",
+		},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: false,
 		MaxAge:           300, // Maximum value not ignored by any of major browsers
 	}))
 	r.Use(middleware.Logger)
 
-	r.Get("/events", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/events/{clientId}", func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher) // TODO check what is http.Pusher
-		eventChannel := make(chan State)
-		clientEvents = append(clientEvents, eventChannel)
-
 		if !ok {
 			http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 			return
+		}
+
+		clientId := chi.URLParam(r, "clientId")
+		if _, exists := clients[clientId]; !exists {
+			clients[clientId] = make(chan State)
 		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -52,7 +60,7 @@ func main() {
 		for {
 			// waitng for any channel to have information, until then we wait
 			select {
-			case newState := <-eventChannel:
+			case newState := <-clients[clientId]:
 				data, err := json.Marshal(newState)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -62,12 +70,7 @@ func main() {
 				flusher.Flush()
 			case <-r.Context().Done():
 				// TODO mutex
-				for i, channel := range clientEvents {
-					if channel == eventChannel {
-						clientEvents = append(clientEvents[:i], clientEvents[i+1:]...)
-						break
-					}
-				}
+				delete(clients, clientId)
 				return
 			}
 		}
@@ -81,19 +84,25 @@ func main() {
 		}
 	})
 
-	r.Patch("/change-state", func(w http.ResponseWriter, r *http.Request) {
+	r.Patch("/change-state/{clientId}", func(w http.ResponseWriter, r *http.Request) {
 		var receivedState State
 		if err := json.NewDecoder(r.Body).Decode(&receivedState); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
+
+		clientId := chi.URLParam(r, "clientId")
+
 		// TODO mutex => only one can change the state at a time
 		// TODO combine to one function
 		if receivedState.VideoRunning != currentState.VideoRunning {
 			currentState.VideoRunning = receivedState.VideoRunning
 			newState := currentState
-			for _, client := range clientEvents {
+			for key := range clients {
+				if clientId == key {
+					continue
+				}
 				select {
-				case client <- newState:
+				case clients[key] <- newState:
 					fmt.Println("sent state for videoRunning")
 				default:
 					fmt.Println("no sub")
@@ -105,9 +114,12 @@ func main() {
 		if receivedState.VideoTimestamp != currentState.VideoTimestamp {
 			currentState.VideoTimestamp = receivedState.VideoTimestamp
 			newState := currentState
-			for _, client := range clientEvents {
+			for key := range clients {
+				if clientId == key {
+					continue
+				}
 				select {
-				case client <- newState:
+				case clients[key] <- newState:
 					fmt.Println("sent state for videoTime")
 				default:
 					fmt.Println("no sub")

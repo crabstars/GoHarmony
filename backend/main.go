@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -19,11 +20,19 @@ type State struct {
 	RequestTimestamp int64 `json:"request_timestamp"`
 }
 
-var currentState = State{"FnLvyysSCw4", false, 0, time.Now().Unix()}
+type SafeState struct {
+	mu    sync.Mutex
+	state State
+}
+
+var currentState = SafeState{state: State{"FnLvyysSCw4", false, 0, time.Now().Unix()}}
+var (
+	clients = make(map[string]chan State)
+	mu      sync.Mutex
+)
 
 func main() {
 	go IncreaseVideoTimestamp()
-	clients := map[string]chan State{}
 
 	r := chi.NewRouter()
 	r.Use(cors.Handler(cors.Options{
@@ -31,9 +40,7 @@ func main() {
 		AllowedMethods: []string{"GET", "PATCH", "OPTIONS"},
 		AllowedHeaders: []string{
 			"Accept",
-			"Authorization",
 			"Content-Type",
-			"X-CSRF-Token",
 		},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: false,
@@ -42,16 +49,18 @@ func main() {
 	r.Use(middleware.Logger)
 
 	r.Get("/events/{clientId}", func(w http.ResponseWriter, r *http.Request) {
-		flusher, ok := w.(http.Flusher) // TODO check what is http.Pusher
+		flusher, ok := w.(http.Flusher)
 		if !ok {
 			http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 			return
 		}
 
 		clientId := chi.URLParam(r, "clientId")
+		mu.Lock()
 		if _, exists := clients[clientId]; !exists {
 			clients[clientId] = make(chan State)
 		}
+		mu.Unlock()
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -64,13 +73,15 @@ func main() {
 				data, err := json.Marshal(newState)
 				if err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
 				}
 
 				fmt.Fprintf(w, "data: %s\n\n", data)
 				flusher.Flush()
 			case <-r.Context().Done():
-				// TODO mutex
+				mu.Lock()
 				delete(clients, clientId)
+				mu.Unlock()
 				return
 			}
 		}
@@ -79,7 +90,7 @@ func main() {
 	r.Get("/current-state", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-cache")
-		if err := json.NewEncoder(w).Encode(currentState); err != nil {
+		if err := json.NewEncoder(w).Encode(currentState.state); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
@@ -92,42 +103,27 @@ func main() {
 
 		clientId := chi.URLParam(r, "clientId")
 
-		// TODO mutex => only one can change the state at a time
-		// TODO combine to one function
-		if receivedState.VideoRunning != currentState.VideoRunning {
-			currentState.VideoRunning = receivedState.VideoRunning
-			newState := currentState
+		currentState.mu.Lock()
+		if receivedState.VideoRunning != currentState.state.VideoRunning ||
+			receivedState.VideoTimestamp != currentState.state.VideoTimestamp ||
+			receivedState.VideoId != currentState.state.VideoId {
+			currentState.state.VideoRunning = receivedState.VideoRunning
+			currentState.state.VideoTimestamp = receivedState.VideoTimestamp
+			currentState.state.VideoId = receivedState.VideoId
+			newState := currentState.state
 			for key := range clients {
 				if clientId == key {
 					continue
 				}
 				select {
 				case clients[key] <- newState:
-					fmt.Println("sent state for videoRunning")
+					fmt.Println("changed state")
 				default:
 					fmt.Println("no sub")
 				}
 			}
-
 		}
-
-		if receivedState.VideoTimestamp != currentState.VideoTimestamp {
-			currentState.VideoTimestamp = receivedState.VideoTimestamp
-			newState := currentState
-			for key := range clients {
-				if clientId == key {
-					continue
-				}
-				select {
-				case clients[key] <- newState:
-					fmt.Println("sent state for videoTime")
-				default:
-					fmt.Println("no sub")
-				}
-			}
-
-		}
-
+		currentState.mu.Unlock()
 		w.Write([]byte("received new state"))
 	})
 	http.ListenAndServe(":3000", r)
@@ -135,43 +131,11 @@ func main() {
 
 func IncreaseVideoTimestamp() {
 	for {
-		// TODO mutex
-		if currentState.VideoRunning {
-			currentState.VideoTimestamp += 1
+		if currentState.state.VideoRunning {
+			currentState.mu.Lock()
+			currentState.state.VideoTimestamp += 1
+			currentState.mu.Unlock()
 			time.Sleep(1 * time.Second)
 		}
 	}
 }
-
-/*
-
-DB
-
-do we need a database at the start??
-
-No:
-	1. idea server tracks user and sends them a message(user and server)
-	- intern state which has:
-		- a list of users
-			- user has a timestamp for video, if state timestamp is different by x time the user timestamp needs to change
-		- current video
-		- bool if video is playing
-		- timestamp from the video
-			-> if video is playing the timestamp should increase each second
-	- if someone is out of sync or we change timestamp can wait a short time to sync them again
-
-
-	2. idea user makes all requests
-	- can send stop/start to server
-	- set videotimestamp and send to server
-	- set video
-	- get current state from server => videoId, timestamp from video, playing(bool), unix timestamp when the videotimestamp was written in the message
-	- FE has to calculate the correct timestamp and change local timestamp if it is more than x seconds difference
-	- server has to increase videotimestamp periodcly
-
-
-
-- Channel Tabel => for the start we only have one channel or none?
-
-
-*/

@@ -13,11 +13,12 @@ import (
 )
 
 type State struct {
-	VideoId      string `json:"video_id"`
+	VideoLink    string `json:"video_link"`
 	VideoRunning bool   `json:"video_running"`
 	// seconds
 	VideoTimestamp   int64 `json:"video_timestamp"`
 	RequestTimestamp int64 `json:"request_timestamp"`
+	Etag             int64 `json:"etag"`
 }
 
 type SafeState struct {
@@ -25,7 +26,9 @@ type SafeState struct {
 	state State
 }
 
-var currentState = SafeState{state: State{"FnLvyysSCw4", false, 0, time.Now().Unix()}}
+var currentState = SafeState{
+	state: State{"https://www.youtube.com/watch?v=p7DrHGrpqFU", false, 0, time.Now().Unix(), 0},
+}
 var (
 	clients = make(map[string]chan State)
 	mu      sync.Mutex
@@ -101,31 +104,41 @@ func main() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 
-		clientId := chi.URLParam(r, "clientId")
+		// clientId := chi.URLParam(r, "clientId")
 
 		currentState.mu.Lock()
-		if receivedState.VideoRunning != currentState.state.VideoRunning ||
-			receivedState.VideoTimestamp != currentState.state.VideoTimestamp ||
-			receivedState.VideoId != currentState.state.VideoId {
-			currentState.state.VideoRunning = receivedState.VideoRunning
+
+		defer currentState.mu.Unlock()
+		// check FE state version
+		if currentState.state.Etag > receivedState.Etag {
+			fmt.Println("ignore old state")
+			w.Write([]byte("received old state, no update"))
+			return
+		}
+
+		if currentState.state.VideoTimestamp != receivedState.VideoTimestamp ||
+			currentState.state.VideoLink != receivedState.VideoLink || currentState.state.VideoRunning != receivedState.VideoRunning {
+
 			currentState.state.VideoTimestamp = receivedState.VideoTimestamp
-			currentState.state.VideoId = receivedState.VideoId
-			newState := currentState.state
+			currentState.state.VideoLink = receivedState.VideoLink
+			currentState.state.VideoRunning = receivedState.VideoRunning
+			currentState.state.Etag += 10000
+
 			for key := range clients {
-				if clientId == key {
-					continue
-				}
+				// if clientId == key {
+				// 	continue
+				// }
 				select {
-				case clients[key] <- newState:
+				case clients[key] <- currentState.state:
 					fmt.Println("changed state")
 				default:
 					fmt.Println("no sub")
 				}
 			}
 		}
-		currentState.mu.Unlock()
 		w.Write([]byte("received new state"))
 	})
+
 	http.ListenAndServe(":3000", r)
 }
 

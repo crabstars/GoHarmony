@@ -18,6 +18,7 @@
 					onStateChange: onPlayerStateChange
 				}
 			});
+			dispatch('playerMount');
 		}
 		// TODO each time the player.time changes we should update videoState
 

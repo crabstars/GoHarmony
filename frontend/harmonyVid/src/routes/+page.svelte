@@ -1,12 +1,11 @@
 <script>
 	import Youtube from '$lib/youtube.svelte';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
 
 	onMount(async () => {
 		// 1. get current state
 		try {
-			console.log(guid);
 			const response = await fetch('http://localhost:3000/current-state', {
 				method: 'GET',
 				headers: {
@@ -26,14 +25,24 @@
 
 		eventSource.onmessage = (event) => {
 			const data = JSON.parse(event.data);
-			if (data['video_running'] != isPlaying) {
-				togglePlayPause();
+			// if (data['video_id'] != videoLink) {
+			// 	changeVideo();
+			// }
+			console.log('got new event');
+			console.log(data);
+
+			if (data['etag'] > videoState.etag) {
+				videoState.etag = data['etag'];
+				// change that i have to edit video_running and isPlaying
+				togglePlayPauseFromEvent(data['video_running']);
+
+				changeVideoByEvent(data['video_link']);
 			}
 
-			if (Math.abs(data['video_timestamp'] - player.getCurrentTime()) > 2) {
-				videoState.video_timestamp = data['video_timestamp'];
-				jumpToSeconds(videoState.video_timestamp);
-			}
+			// if (Math.abs(data['video_timestamp'] - player.getCurrentTime()) > 2) {
+			// 	videoState.video_timestamp = data['video_timestamp'];
+			// 	jumpToSeconds(videoState.video_timestamp);
+			// }
 		};
 
 		eventSource.onerror = (error) => {
@@ -46,75 +55,77 @@
 		};
 
 		//3. check timestamp
-		checkInterval = setInterval(() => {
-			if (player && player.getCurrentTime) {
-				if (YT.PlayerState.PLAYING) {
-					videoState.video_timestamp += 1;
-				}
-				const currentTime = Math.round(player.getCurrentTime());
-				console.log(currentTime);
-				if (Math.abs(currentTime - videoState.video_timestamp) > 2) {
-					handleSeeked();
-				}
-			}
-		}, 1000); // Check every second.
-
+		// checkInterval = setInterval(() => {
+		// 	if (player && player.getCurrentTime) {
+		// 		if (isPlaying) {
+		// 			videoState.video_timestamp += 1;
+		// 		}
+		// 		const currentTime = Math.round(player.getCurrentTime());
+		// 		if (Math.abs(currentTime - videoState.video_timestamp) > 2) {
+		// 			//handleSeeked();
+		// 		}
+		// 	}
+		// }, 1000); // Check every second.
 		return () => {
 			console.log('connection close');
-			eventSource.close(); // Close the connection when the component is destroyed
+			eventSource.close();
 		};
 	});
 
 	onDestroy(() => {
-		clearInterval(checkInterval); // Clear the interval when the component is destroyed
+		clearInterval(checkInterval);
 	});
 
 	const guid = uuidv4();
 	let videoState = {
-		video_id: '',
+		video_link: '',
 		video_running: false,
 		video_timestamp: 0,
-		request_timestamp: 0
+		request_timestamp: 0,
+		etag: 0
 	};
 
 	let checkInterval;
 	let player;
-	let isPlaying = false;
-	let videoId = 'FnLvyysSCw4'; // default
-	let logInterval;
 
 	const changeVideo = () => {
-		console.log('changing video id');
-		player.loadVideoById(videoId);
+		console.log('changing video link');
+		player.loadVideoById(videoState.video_link.replace('https://www.youtube.com/watch?v=', ''));
+		updateVideoState();
 	};
 
-	const togglePlayPause = () => {
-		if (isPlaying) {
-			player.pauseVideo();
-			clearInterval(logInterval); // clear interval when video is paused
-		} else {
-			player.playVideo();
-			startLogging(); // start logging when video is played
+	const changeVideoByEvent = (event_video_link) => {
+		if (event_video_link === videoState.video_link) {
+			console.log('same video link');
+			return;
 		}
-		isPlaying = !isPlaying;
-		videoState.video_running = isPlaying;
-		updateVideoState();
+		console.log('changing video link by event');
+		videoState.video_link = event_video_link;
+		player.loadVideoById(event_video_link.replace('https://www.youtube.com/watch?v=', ''));
+	};
+
+	const togglePlayPauseFromEvent = (palying) => {
+		if (palying === videoState.video_running) {
+			console.log('return');
+			return;
+		}
+		if (palying === false) {
+			console.log('pause');
+			player.pauseVideo();
+		} else {
+			console.log('play');
+			player.playVideo();
+		}
+		videoState.video_running = palying;
 	};
 
 	const jumpToSeconds = (seconds) => {
 		if (!isNaN(seconds)) player.seekTo(seconds, true);
 	};
 
-	const startLogging = () => {
-		logInterval = setInterval(() => {
-			const currentTime = player.getCurrentTime();
-			//console.log(`Current Time: ${currentTime}`);
-		}, 1000);
-	};
-
-	const handleStateChange = (isPlaying) => {
-		if (isPlaying != videoState.video_running) {
-			videoState.video_running = isPlaying;
+	const handleStateChange = (palying) => {
+		if (videoState.video_running != palying) {
+			videoState.video_running = palying;
 			updateVideoState();
 		}
 	};
@@ -124,9 +135,22 @@
 		updateVideoState();
 	};
 
+	const setState = () => {
+		// todo
+		// console.log('setState');
+		// setTimeout(() => {
+		// 	console.log('insideSetState');
+		// 	changeVideo();
+		// 	console.log(videoState.video_timestamp);
+		// 	jumpToSeconds(videoState.video_timestamp); // Jumping to the correct timestamp
+		// 	togglePlayPause(); // Starting the video if it should be playing.
+		// }, 1000);
+	};
+
 	async function updateVideoState() {
 		// TODO right now if we get a change from the server we also send a patch to the server because the onPlayerStateChange is triggerd if we change isPlaying
 		// => fix soon bec we can get a infinite loop to send request again and again or backend dont send state to same user again => better
+		//console.log('try update video');
 		try {
 			const response = await fetch('http://localhost:3000/change-state/' + guid, {
 				method: 'PATCH',
@@ -145,14 +169,40 @@
 	}
 </script>
 
-<Youtube
-	bind:player
-	on:playing={() => handleStateChange(true)}
-	on:paused={() => handleStateChange(false)}
-/>
+<div class="youtube-container">
+	<Youtube
+		bind:player
+		on:playing={() => handleStateChange(true)}
+		on:paused={() => handleStateChange(false)}
+		on:playerMount={() => setState()}
+	/>
+</div>
 
 <div>
-	<label for="videoId">Video ID: </label>
-	<input id="videoId" type="text" bind:value={videoId} placeholder="Enter Video ID" />
+	<label for="videoLink">Video Link: </label>
+	<input
+		id="videoLink"
+		type="text"
+		bind:value={videoState.video_link}
+		placeholder="https://www.youtube.com/watch?v=p7DrHGrpqFU"
+	/>
 	<button on:click={changeVideo}>change video</button>
 </div>
+
+<style>
+	:global(body) {
+		background-color: #333333; /* Dark Grey Background */
+		color: white; /* Set Text color to white for better readability in dark mode */
+	}
+
+	.youtube-container {
+		width: 80vw; /* Or any specific width */
+		height: 45vw; /* Maintain aspect ratio, height = 0.5625 * width for 16:9 videos */
+		max-width: 1280px; /* Maximum width you want */
+		max-height: 720px; /* Maximum height you want */
+		margin: 0 auto; /* Centering: auto margin on left and right */
+		position: relative; /* Keep this as relative so if you use absolute positioning within the Youtube component, it will be relative to this container */
+		background-color: #333333; /* Dark Grey Background */
+		color: white; /* Set Text color to white (or any lighter shade) for better readability in dark mode */
+	}
+</style>

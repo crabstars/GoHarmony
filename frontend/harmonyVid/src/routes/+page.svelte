@@ -147,9 +147,6 @@
 	};
 
 	async function updateVideoState() {
-		// TODO right now if we get a change from the server we also send a patch to the server because the onPlayerStateChange is triggerd if we change isPlaying
-		// => fix soon bec we can get a infinite loop to send request again and again or backend dont send state to same user again => better
-		//console.log('try update video');
 		try {
 			const response = await fetch('http://localhost:3000/change-state/' + guid, {
 				method: 'PATCH',
@@ -189,6 +186,7 @@
 </div>
 
 <style>
+	/* thanks chatgpt */
 	:global(body) {
 		background-color: #333333; /* Dark Grey Background */
 		color: white; /* Set Text color to white for better readability in dark mode */

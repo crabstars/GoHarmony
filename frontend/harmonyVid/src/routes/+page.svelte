@@ -25,9 +25,6 @@
 
 		eventSource.onmessage = (event) => {
 			const data = JSON.parse(event.data);
-			// if (data['video_id'] != videoLink) {
-			// 	changeVideo();
-			// }
 			console.log('got new event');
 			console.log(data);
 
@@ -37,12 +34,12 @@
 				togglePlayPauseFromEvent(data['video_running']);
 
 				changeVideoByEvent(data['video_link']);
-			}
 
-			// if (Math.abs(data['video_timestamp'] - player.getCurrentTime()) > 2) {
-			// 	videoState.video_timestamp = data['video_timestamp'];
-			// 	jumpToSeconds(videoState.video_timestamp);
-			// }
+				if (Math.abs(data['video_timestamp'] - player.getCurrentTime()) > 2) {
+					videoState.video_timestamp = data['video_timestamp'];
+					jumpToSeconds(videoState.video_timestamp);
+				}
+			}
 		};
 
 		eventSource.onerror = (error) => {
@@ -55,17 +52,17 @@
 		};
 
 		//3. check timestamp
-		// checkInterval = setInterval(() => {
-		// 	if (player && player.getCurrentTime) {
-		// 		if (isPlaying) {
-		// 			videoState.video_timestamp += 1;
-		// 		}
-		// 		const currentTime = Math.round(player.getCurrentTime());
-		// 		if (Math.abs(currentTime - videoState.video_timestamp) > 2) {
-		// 			//handleSeeked();
-		// 		}
-		// 	}
-		// }, 1000); // Check every second.
+		checkInterval = setInterval(() => {
+			if (player) {
+				if (videoState.video_running) {
+					videoState.video_timestamp += 1;
+				}
+				const currentTime = Math.round(player.getCurrentTime());
+				if (Math.abs(currentTime - videoState.video_timestamp) > 2) {
+					handleSeeked();
+				}
+			}
+		}, 1000); // Check every second.
 		return () => {
 			console.log('connection close');
 			eventSource.close();
@@ -78,7 +75,7 @@
 
 	const guid = uuidv4();
 	let videoState = {
-		video_link: '',
+		video_link: 'https://www.youtube.com/watch?v=p7DrHGrpqFU',
 		video_running: false,
 		video_timestamp: 0,
 		request_timestamp: 0,
@@ -91,6 +88,7 @@
 	const changeVideo = () => {
 		console.log('changing video link');
 		player.loadVideoById(videoState.video_link.replace('https://www.youtube.com/watch?v=', ''));
+		videoState.video_timestamp = 0;
 		updateVideoState();
 	};
 
@@ -101,6 +99,7 @@
 		}
 		console.log('changing video link by event');
 		videoState.video_link = event_video_link;
+		videoState.video_timestamp = 0;
 		player.loadVideoById(event_video_link.replace('https://www.youtube.com/watch?v=', ''));
 	};
 
@@ -184,7 +183,7 @@
 		id="videoLink"
 		type="text"
 		bind:value={videoState.video_link}
-		placeholder="https://www.youtube.com/watch?v=p7DrHGrpqFU"
+		placeholder="Enter Video Link"
 	/>
 	<button on:click={changeVideo}>change video</button>
 </div>

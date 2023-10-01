@@ -16,9 +16,8 @@ type State struct {
 	VideoLink    string `json:"video_link"`
 	VideoRunning bool   `json:"video_running"`
 	// seconds
-	VideoTimestamp   int64 `json:"video_timestamp"`
-	RequestTimestamp int64 `json:"request_timestamp"`
-	Etag             int64 `json:"etag"`
+	VideoTimestamp int64 `json:"video_timestamp"`
+	Etag           int64 `json:"etag"`
 }
 
 type SafeState struct {
@@ -27,8 +26,9 @@ type SafeState struct {
 }
 
 var currentState = SafeState{
-	state: State{"https://www.youtube.com/watch?v=p7DrHGrpqFU", false, 0, time.Now().Unix(), 0},
+	state: State{"https://www.youtube.com/watch?v=p7DrHGrpqFU", false, 0, 0},
 }
+
 var (
 	clients = make(map[string]chan State)
 	mu      sync.Mutex
@@ -104,7 +104,13 @@ func main() {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 
-		// clientId := chi.URLParam(r, "clientId")
+		clientId := chi.URLParam(r, "clientId")
+
+		if _, exists := clients[clientId]; !exists {
+
+			http.Error(w, "clientId not found", http.StatusInternalServerError)
+			return
+		}
 
 		currentState.mu.Lock()
 
@@ -125,9 +131,6 @@ func main() {
 			currentState.state.Etag += 10000
 
 			for key := range clients {
-				// if clientId == key {
-				// 	continue
-				// }
 				select {
 				case clients[key] <- currentState.state:
 					fmt.Println("changed state")

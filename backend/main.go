@@ -69,6 +69,16 @@ func main() {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 
+		// move into a function and use it in for loop
+		data, err := json.Marshal(currentState.state)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Fprintf(w, "data: %s\n\n", data)
+		flusher.Flush()
+
 		for {
 			// waitng for any channel to have information, until then we wait
 			select {

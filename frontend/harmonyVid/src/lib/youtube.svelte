@@ -2,13 +2,14 @@
 	import { onMount, createEventDispatcher } from 'svelte';
 
 	export let player;
-	export let initialVideoId = '';
+	export let initialVideoId;
 
 	const ytPlayerId = 'youtube-player';
 	const dispatch = createEventDispatcher();
 
 	onMount(() => {
 		function load() {
+			console.log('initital: ' + initialVideoId);
 			player = new YT.Player(ytPlayerId, {
 				height: '100%',
 				width: '100%',
@@ -20,7 +21,6 @@
 			});
 			dispatch('playerMount');
 		}
-		// TODO each time the player.time changes we should update videoState
 
 		function onPlayerStateChange(event) {
 			switch (event.data) {

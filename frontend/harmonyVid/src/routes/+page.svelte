@@ -3,6 +3,7 @@
 	import { onMount, onDestroy, tick } from 'svelte';
 	import { v4 as uuidv4 } from 'uuid';
 
+	let initialVideoId;
 	onMount(async () => {
 		// 1. get current state
 		try {
@@ -16,6 +17,12 @@
 				throw new Error('Network response was not ok');
 			}
 			videoState = await response.json();
+			initialVideoId = videoState.video_link.replace('https://www.youtube.com/watch?v=', '');
+
+			// setTimeout(changeVideoByEvent(videoState.video_link), 1000);
+			// changeVideo();
+			// // jumpToSeconds(videoState.video_timestamp);
+			// // togglePlayPauseFromEvent(videoState.video_running);
 		} catch (error) {
 			console.error('There was a problem with the fetch operation:', error);
 		}
@@ -63,6 +70,15 @@
 				}
 			}
 		}, 1000); // Check every second.
+
+		checkVideoLoaded = setInterval(() => {
+			if (player && player.getPlayerState === undefined) {
+				console.log('No video is loaded, loading initial video');
+
+				// load an initial video
+				player.loadVideoById(videoState.video_link.replace('https://www.youtube.com/watch?v=', ''));
+			}
+		}, 1000);
 		return () => {
 			console.log('connection close');
 			eventSource.close();
@@ -71,6 +87,7 @@
 
 	onDestroy(() => {
 		clearInterval(checkInterval);
+		clearInterval(checkVideoLoaded);
 	});
 
 	const guid = uuidv4();
@@ -83,6 +100,7 @@
 	};
 
 	let checkInterval;
+	let checkVideoLoaded;
 	let player;
 
 	const changeVideo = () => {
@@ -123,6 +141,7 @@
 	};
 
 	const handleStateChange = (palying) => {
+		console.log('playing');
 		if (videoState.video_running != palying) {
 			videoState.video_running = palying;
 			updateVideoState();
@@ -134,17 +153,12 @@
 		updateVideoState();
 	};
 
-	const setState = () => {
-		// todo
-		// console.log('setState');
-		// setTimeout(() => {
-		// 	console.log('insideSetState');
-		// 	changeVideo();
-		// 	console.log(videoState.video_timestamp);
-		// 	jumpToSeconds(videoState.video_timestamp); // Jumping to the correct timestamp
-		// 	togglePlayPause(); // Starting the video if it should be playing.
-		// }, 1000);
-	};
+	function handlePlayerMount() {
+		if (player) {
+			console.log('Player mount');
+			player.loadVideoById(videoState.video_link.replace('https://www.youtube.com/watch?v=', ''));
+		}
+	}
 
 	async function updateVideoState() {
 		try {
@@ -168,9 +182,10 @@
 <div class="youtube-container">
 	<Youtube
 		bind:player
+		{initialVideoId}
 		on:playing={() => handleStateChange(true)}
 		on:paused={() => handleStateChange(false)}
-		on:playerMount={() => setState()}
+		on:playerMount={() => handlePlayerMount()}
 	/>
 </div>
 

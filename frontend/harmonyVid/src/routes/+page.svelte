@@ -29,7 +29,7 @@
 		}
 
 		// 2. sub to event
-		const eventSource = new EventSource(PUBLIC_BASE_URL + '/events/' + guid);
+		const eventSource = new EventSource(PUBLIC_BASE_URL + 'events/' + guid);
 
 		eventSource.onmessage = (event) => {
 			const data = JSON.parse(event.data);

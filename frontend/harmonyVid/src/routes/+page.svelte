@@ -4,10 +4,11 @@
 	import { v4 as uuidv4 } from 'uuid';
 
 	let initialVideoId;
+	const PUBLIC_BASE_URL = 'https://askpaul.duckdns.org/api/';
 	onMount(async () => {
 		// 1. get current state
 		try {
-			const response = await fetch('http://localhost:3000/current-state', {
+			const response = await fetch(PUBLIC_BASE_URL + 'current-state', {
 				method: 'GET',
 				headers: {
 					'Content-Type': 'application/json'
@@ -28,7 +29,7 @@
 		}
 
 		// 2. sub to event
-		const eventSource = new EventSource('http://localhost:3000/events/' + guid);
+		const eventSource = new EventSource(PUBLIC_BASE_URL + '/events/' + guid);
 
 		eventSource.onmessage = (event) => {
 			const data = JSON.parse(event.data);
@@ -162,7 +163,7 @@
 
 	async function updateVideoState() {
 		try {
-			const response = await fetch('http://localhost:3000/change-state/' + guid, {
+			const response = await fetch(PUBLIC_BASE_URL + 'change-state/' + guid, {
 				method: 'PATCH',
 				headers: {
 					'Content-Type': 'application/json'

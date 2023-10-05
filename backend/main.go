@@ -51,7 +51,7 @@ func main() {
 	}))
 	r.Use(middleware.Logger)
 
-	r.Get("/events/{clientId}", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/api/events/{clientId}", func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
@@ -100,7 +100,7 @@ func main() {
 		}
 	})
 
-	r.Get("/current-state", func(w http.ResponseWriter, r *http.Request) {
+	r.Get("/api/current-state", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-cache")
 		if err := json.NewEncoder(w).Encode(currentState.state); err != nil {
@@ -108,7 +108,7 @@ func main() {
 		}
 	})
 
-	r.Patch("/change-state/{clientId}", func(w http.ResponseWriter, r *http.Request) {
+	r.Patch("/api/change-state/{clientId}", func(w http.ResponseWriter, r *http.Request) {
 		var receivedState State
 		if err := json.NewDecoder(r.Body).Decode(&receivedState); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
